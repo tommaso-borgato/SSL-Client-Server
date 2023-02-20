@@ -17,15 +17,15 @@ public class SSLServer {
             // Get the keystore
             System.setProperty("javax.net.debug", "all");
             KeyStore keyStore = KeyStore.getInstance("PKCS12");
-            String password = "abcdefg";
-            InputStream inputStream = ClassLoader.getSystemClassLoader().getResourceAsStream("server/certificate-server.p12");
+            String password = "PIPPOBAUDO123";
+            InputStream inputStream = ClassLoader.getSystemClassLoader().getResourceAsStream("script/wildfly_configuration/wildfly.keystore");
             keyStore.load(inputStream, password.toCharArray());
 
             // TrustManagerFactory
-            String password2 = "aabbcc";
+            String password2 = "PIPPOBAUDO123";
             KeyStore trustStore = KeyStore.getInstance("PKCS12");
             TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance("PKIX", "SunJSSE");
-            InputStream inputStream1 = ClassLoader.getSystemClassLoader().getResourceAsStream("client/certificate-client.p12");
+            InputStream inputStream1 = ClassLoader.getSystemClassLoader().getResourceAsStream("script/keycloak_configuration/ca.truststore");
             trustStore.load(inputStream1, password2.toCharArray());
             trustManagerFactory.init(trustStore);
             X509TrustManager x509TrustManager = null;

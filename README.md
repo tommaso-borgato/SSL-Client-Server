@@ -29,7 +29,7 @@ he standard SSL Handshake
    * Server presents a list of certificate authority DNs that client certs may be signed by. 
 3. Client response 
    * Client continues the key exchange protocol necessary to set up a TLS session. 
-   * Cclient presents a certificate that was signed by one of the CAs and encrypts with the server’s public key.  
+   * Client presents a certificate that was signed by one of the CAs and encrypts with the server’s public key.  
    * Send the pre-master (based on cipher) encrypted by Server’s public key to server. 
 4. Server accepts the cert presented by client. 
    * Server uses its private key to decrypt the pre-master secret. Both client and server perform steps to generate the master secret with the agreed cipher. 
@@ -65,3 +65,107 @@ openssl pkcs12 -inkey server-key.pem -in server-certificate.pem -export -out ser
 ##### 6. If everything went well, you will see this:
 
 ![result](img/result.jpg)
+
+##### 7. Instructions for enabling mutual SSL in Keycloak and WildFly
+
+https://gist.github.com/gyfoster/4005353b1f063b92dd77798a6fbfc018
+
+```shell
+ROOT CA
+--------------
+Generate the CA private key:
+$ openssl genrsa -out ca.key 2048
+
+Create and self sign the root certificate:
+$ openssl req -new -x509 -key ca.key -out ca.crt
+
+Import root CA certificate into truststore:
+$ keytool -import -file ca.crt -keystore ca.truststore -keypass <password> -storepass <password>
+
+
+WILDFLY
+-----------
+Generate wildfly server key:
+$ openssl genrsa -out wildfly.key 2048
+
+Generate wildfly certificate signing request:
+$ openssl req -new -key wildfly.key -out wildfly.csr
+
+Sign wildfly CSR using CA key to generate server certificate:
+$ openssl x509 -req -days 3650 -in wildfly.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out wildfly.crt
+
+Convert WildFly cert to pkcs12 format:
+$ openssl pkcs12 -export -in wildfly.crt -inkey wildfly.key -out wildfly.p12 -name myserverkeystore -CAfile ca.crt
+
+Convert WildFly pkcs12 file to Java keystore:
+$ keytool -importkeystore -deststorepass <password> -destkeypass <password> -destkeystore wildfly.keystore -srckeystore wildfly.p12 -srcstoretype PKCS12 -srcstorepass <password>
+
+
+KEYCLOAK
+-------------
+Generate keycloak server key:
+$ openssl genrsa -out keycloak.key 2048
+
+Generate keycloak certificate signing request:
+$ openssl req -new -key keycloak.key -out keycloak.csr
+
+Sign keycloak CSR using CA key to generate server certificate:
+$ openssl x509 -req -days 3650 -in keycloak.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out keycloak.crt
+
+Convert Keycloak cert to pkcs12 format:
+$ openssl pkcs12 -export -in keycloak.crt -inkey keycloak.key -out keycloak.p12 -name myserverkeystore -CAfile ca.crt
+
+Convert Keycloak pkcs12 file to Java keystore:
+$ keytool -importkeystore -deststorepass <password> -destkeypass <password> -destkeystore keycloak.keystore -srckeystore keycloak.p12 -srcstoretype PKCS12 -srcstorepass <password>
+
+
+CLIENT (browser)
+------------------
+Generate client server key:
+$ openssl genrsa -out client.key 2048
+
+Generate client certificate signing request:
+$ openssl req -new -key client.key -out client.csr
+
+Sign client CSR using CA key to generate server certificate:
+$ openssl x509 -req -days 3650 -in client.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out client.crt
+
+Export client certificate to pkcs12 format:
+$ openssl pkcs12 -export -in client.crt -inkey client.key -certfile ca.crt -out clientCert.p12
+
+
+FINAL STEPS
+------------
+1. Import clientCert.p12 into browser
+2. Paste wildfly.keystore and ca.truststore into WILDFLY_HOME\standalone\configuration
+3. Paste keycloak.keystore and ca.truststore into KEYCLOAK_HOME\standalone\configuration
+4. Paste the following inside security-realms in WILDFLY_HOME\standalone\configuration\standalone.xml:
+    <security-realm name="ssl-realm">
+      <server-identities>
+        <ssl>
+          <keystore path="wildfly.keystore" relative-to="jboss.server.config.dir" keystore-password="secret" alias="myserverkeystore" key-password="<password>" />
+        </ssl>
+      </server-identities>
+      <authentication>
+        <truststore path="ca.truststore" relative-to="jboss.server.config.dir" keystore-password="<password>" />
+      </authentication>
+    </security-realm>
+5. Paste the following inside security-realms in KEYCLOAK_HOME\standalone\configuration\standalone.xml:
+    <security-realm name="ssl-realm">
+      <server-identities>
+        <ssl>
+          <keystore path="keycloak.keystore" relative-to="jboss.server.config.dir" keystore-password="secret" alias="myserverkeystore" key-password="<password>" />
+        </ssl>
+      </server-identities>
+      <authentication>
+        <truststore path="ca.truststore" relative-to="jboss.server.config.dir" keystore-password="<password>" />
+      </authentication>
+    </security-realm>
+6. Replace https-listener with the following in WildFly's and Keycloak's standalone.xml:
+    <https-listener name="https" socket-binding="https" security-realm="ssl-realm" enable-http2="true" verify-client="REQUESTED" />
+7. Add the following properties to your app's keycloak.json:
+    ...
+    "truststore": "C:\your\truststore\path\ca.truststore",
+    "truststore-password": "<password>",
+    ...
+```
